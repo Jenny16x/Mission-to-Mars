@@ -1,6 +1,4 @@
-#The first line says that we'll use Flask to render a template, redirecting to another url, and creating a URL.
-#The second line says we'll use PyMongo to interact with our Mongo database.
-#The third line says that to use the scraping code, we will convert from Jupyter notebook to Python.
+
 
 from flask import Flask, render_template, redirect, url_for
 from flask_pymongo import PyMongo
@@ -8,40 +6,13 @@ import scraping
 
 app = Flask(__name__)
 
-# Use flask_pymongo to set up mongo connection
-#app.config["MONGO_URI"] tells Python that our app will connect to Mongo using a URI, a uniform resource identifier similar to a URL.
-#"mongodb://localhost:27017/mars_app" is the URI we'll be using to connect our app to Mongo. This URI is saying that the app can reach Mongo through our localhost server, using port 27017, using a database named "mars_app".
-
 app.config["MONGO_URI"] = "mongodb://localhost:27017/mars_app"
 mongo = PyMongo(app)
 
-#This route, @app.route("/"), tells Flask what to display when we're looking at the home page, index.html (index.html is the default HTML file that we'll use to display the content we've scraped). This means that when we visit our web app's HTML page, we will see the home page.
-
-#Within the def index(): function the following is accomplished:
-
-# mars = mongo.db.mars.find_one() uses PyMongo to find the "mars" collection in our database, which we will create when we convert our Jupyter scraping code to Python Script. We will also assign that path to themars variable for use later.
-
-# return render_template("index.html" tells Flask to return an HTML template using an index.html file. We'll create this file after we build the Flask routes.
-
-# , mars=mars) tells Python to use the "mars" collection in MongoDB.
-
-
 @app.route("/")
-def index():
+def home():
    mars = mongo.db.mars.find_one()
    return render_template("index.html", mars=mars)
-
-# The first line, @app.route(“/scrape”) defines the route that Flask will be using. This route, “/scrape”, will run the function that we create just beneath it.
-
-# The next lines allow us to access the database, scrape new data using our scraping.py script, update the database, and return a message when successful. Let's break it down.
-
-# First, we define it with def scrape():.
-
-# Then, we assign a new variable that points to our Mongo database: mars = mongo.db.mars.
-
-# Next, we created a new variable to hold the newly scraped data: mars_data = scraping.scrape_all(). In this line, we're referencing the scrape_all function in the scraping.py file exported from Jupyter Notebook.
-
-# Now that we've gathered new data, we need to update the database using .update(). Let's take a look at the syntax we'll use, as shown below:
 
 @app.route("/scrape")
 def scrape():
@@ -50,125 +21,5 @@ def scrape():
    mars.update({}, mars_data, upsert=True)
    return redirect('/', code=302)
 
-#.update(query_parameter, data, options)   
-
-# We're inserting data, so first we'll need to add an empty JSON object with {}
-#  in place of the query_parameter. Next, we'll use the data we have stored in 
-# mars_data. Finally, the option we'll include is upsert=True. 
-# This indicates to Mongo to create a new document if one doesn't already exist, 
-# and new data will always be saved (even if we haven't already created a document for it)
-
-#mars.update({}, mars_data, upsert=True)
-
-
-# Finally, we will add a redirect after successfully scraping the data: 
-# return redirect('/', code=302). This will navigate our page back to / where
-#  we can see the updated content.
-
 if __name__ == "__main__":
    app.run()
-
-
-# Import Splinter, BeautifulSoup, and Pandas
-from splinter import Browser
-from bs4 import BeautifulSoup as soup
-import pandas as pd
-import datetime as dt
-from webdriver_manager.chrome import ChromeDriverManager
-
-
-def scrape_all():
-    # Initiate headless driver for deployment
-    executable_path = {'executable_path': ChromeDriverManager().install()}
-    browser = Browser('chrome', **executable_path, headless=True)
-
-    news_title, news_paragraph = mars_news(browser)
-
-    # Run all scraping functions and store results in a dictionary
-    data = {
-        "news_title": news_title,
-        "news_paragraph": news_paragraph,
-        "featured_image": featured_image(browser),
-        "facts": mars_facts(),
-        "last_modified": dt.datetime.now()
-    }
-
-    # Stop webdriver and return data
-    browser.quit()
-    return data
-
-
-def mars_news(browser):
-
-    # Scrape Mars News
-    # Visit the mars nasa news site
-    url = 'https://data-class-mars.s3.amazonaws.com/Mars/index.html'
-    browser.visit(url)
-
-    # Optional delay for loading the page
-    browser.is_element_present_by_css('div.list_text', wait_time=1)
-
-    # Convert the browser html to a soup object and then quit the browser
-    html = browser.html
-    news_soup = soup(html, 'html.parser')
-
-    # Add try/except for error handling
-    try:
-        slide_elem = news_soup.select_one('div.list_text')
-        # Use the parent element to find the first 'a' tag and save it as 'news_title'
-        news_title = slide_elem.find('div', class_='content_title').get_text()
-        # Use the parent element to find the paragraph text
-        news_p = slide_elem.find('div', class_='article_teaser_body').get_text()
-
-    except AttributeError:
-        return None, None
-
-    return news_title, news_p
-
-
-def featured_image(browser):
-    # Visit URL
-    url = 'https://data-class-jpl-space.s3.amazonaws.com/JPL_Space/index.html'
-    browser.visit(url)
-
-    # Find and click the full image button
-    full_image_elem = browser.find_by_tag('button')[1]
-    full_image_elem.click()
-
-    # Parse the resulting html with soup
-    html = browser.html
-    img_soup = soup(html, 'html.parser')
-
-    # Add try/except for error handling
-    try:
-        # Find the relative image url
-        img_url_rel = img_soup.find('img', class_='fancybox-image').get('src')
-
-    except AttributeError:
-        return None
-
-    # Use the base url to create an absolute url
-    img_url = f'https://data-class-jpl-space.s3.amazonaws.com/JPL_Space/{img_url_rel}'
-
-    return img_url
-
-def mars_facts():
-    # Add try/except for error handling
-    try:
-        # Use 'read_html' to scrape the facts table into a dataframe
-        df = pd.read_html('https://data-class-mars-facts.s3.amazonaws.com/Mars_Facts/index.html')[0]
-
-    except BaseException:
-        return None
-
-    # Assign columns and set index of dataframe
-    df.columns=['Description', 'Mars', 'Earth']
-    df.set_index('Description', inplace=True)
-
-    # Convert dataframe into HTML format, add bootstrap
-    return df.to_html(classes="table table-striped")
-
-if __name__ == "__main__":
-
-    # If running as script, print scraped data
-    print(scrape_all())
